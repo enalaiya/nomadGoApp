@@ -1,175 +1,112 @@
 const express = require("express");
 const cors = require("cors");
-//const tree_model = require("treeModel");
+const { Client } = require("pg");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
-// app.use(function (req, res, next) {
-//   res.setHeader("Access-Control-Allow-Origin", "http://localhost:5173");
-//   res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
-//   res.setHeader(
-//     "Access-Control-Allow-Headers",
-//     "Content-Type, Access-Control-Allow-Headers"
-//   );
-//   next();
-// });
 
-// WITH RECURSIVE TreePaths AS (
-//     SELECT id, label, expanded, parent_id, CAST(id AS CHAR(100)) AS path
-//     FROM tree
-//     WHERE parent_id IS NULL
-//     UNION ALL
-//     SELECT t.id, t.label, t.expanded, t.parent_id, CONCAT(tp.path, '->', t.id)
-//     FROM tree t
-//     INNER JOIN TreePaths tp ON t.parent_id = tp.id
-// )
-// SELECT * FROM TreePaths ORDER BY path;
-
-app.use(cors());
-
-// app.get("/", (req, res) => {
-//   tree_model
-//     .getNodes()
-//     .then((response) => {
-//       res.status(200).send(response);
-//     })
-//     .catch((error) => {
-//       res.status(500).send(error);
-//     });
-// });
-
-app.get("/api/data", (req, res) => {
-  res.json({ message: "Hello from server!" });
+// PostgreSQL client
+const client = new Client({
+  user: "postgres",
+  host: "localhost",
+  database: "postgres",
+  password: "",
+  port: 5432,
 });
 
-app.get("/api", (req, res) => {
-  res.json(
-    // {
-    //   id: "A",
-    //   children: [{ id: "B" }, { id: "C" }],
-    // },
-    // {
-    //   id: "B",
-    //   children: [{ id: "D" }, { id: "E" }, { id: "F" }],
-    // },
-    // {
-    //   id: "C",
-    //   children: [{ id: "G" }, { id: "H" }],
-    // },
-    // {
-    //   id: "D",
-    //   children: [],
-    // },
-    // {
-    //   id: "E",
-    //   children: [],
-    // },
-    // {
-    //   id: "F",
-    //   children: [],
-    // },
-    // {
-    //   id: "G",
-    //   children: [],
-    // },
-    // {
-    //   id: "H",
-    //   children: [],
-    // },
-    {
-      id: 1,
-      label: "root",
-      expanded: true,
-      children: [
-        {
-          id: 2,
-          label: "leaf",
-          expanded: true,
-          children: [
-            {
-              id: 4,
-              label: "leaf",
-              expanded: true,
-              children: [
-                {
-                  id: 8,
-                  label: "leaf",
-                  expanded: true,
-                  children: [],
-                },
-                {
-                  id: 9,
-                  label: "leaf",
-                  expanded: true,
-                  children: [],
-                },
-              ],
-            },
-            {
-              id: 5,
-              label: "leaf",
-              expanded: true,
-              children: [
-                {
-                  id: 10,
-                  label: "leaf",
-                  expanded: true,
-                  children: [],
-                },
-              ],
-            },
-          ],
-        },
-        {
-          id: 3,
-          label: "leaf",
-          expanded: true,
-          children: [
-            {
-              id: 6,
-              label: "leaf",
-              expanded: true,
-              children: [
-                {
-                  id: 11,
-                  label: "leaf",
-                  expanded: true,
-                  children: [],
-                },
-              ],
-            },
-            {
-              id: 7,
-              label: "leaf",
-              expanded: true,
-              children: [
-                {
-                  id: 12,
-                  label: "leaf",
-                  expanded: true,
-                  children: [],
-                },
-                {
-                  id: 13,
-                  label: "leaf",
-                  expanded: true,
-                  children: [
-                    {
-                      id: 14,
-                      label: "leaf",
-                      expanded: true,
-                      children: [],
-                    },
-                  ],
-                },
-              ],
-            },
-          ],
-        },
-      ],
-    }
+client.connect();
+
+// Get tree
+async function getTree() {
+  const treeQuery = `
+    WITH RECURSIVE TreePaths AS (
+        SELECT id, label, expanded, parent_id, CAST(id AS TEXT) AS path
+        FROM tree
+        WHERE parent_id IS NULL
+        UNION ALL
+        SELECT t.id, t.label, t.expanded, t.parent_id, CONCAT(tp.path, '->', t.id)
+        FROM tree t
+        INNER JOIN TreePaths tp ON t.parent_id = tp.id
+    )
+    SELECT * FROM TreePaths ORDER BY path;
+  `;
+
+  const res = await client.query(treeQuery);
+  const flatData = res.rows;
+
+  // builds the tree structure
+  function buildTree(nodes, parentId = null) {
+    return nodes
+      .filter((node) => node.parent_id === parentId)
+      .map((node) => ({
+        id: node.id,
+        label: node.label,
+        expanded: node.expanded,
+        children: buildTree(nodes, node.id),
+      }));
+  }
+
+  const tree = buildTree(flatData);
+  return tree;
+}
+
+// GET /api/tree
+// Fetches the tree.
+app.get("/api/tree", async (req, res) => {
+  try {
+    const organizedTree = await getTree();
+    res.json(organizedTree);
+  } catch (error) {
+    console.error("Error fetching tree:", error);
+    res.status(500).json({ error: "Failed to fetch tree" });
+  }
+});
+
+// POST /api/tree
+// Creates a new node, with an ID set by incrementing the MAX_ID, and sets the parent node.
+app.post("/api/tree", async (req, res) => {
+  const { label, expanded, parentId } = req.body;
+  await client.query(
+    `INSERT INTO tree (id, label, expanded, parent_id)
+SELECT COALESCE(MAX(id), 0) + 1, $1, $2, $3
+FROM tree;`,
+    [label, expanded, parentId]
   );
+  res.sendStatus(201);
+});
+
+// PUT /api/tree/:id
+// Updates a node's label and/or expanded state
+app.put("/api/tree/:id", async (req, res) => {
+  const { id } = req.params;
+  const { label, expanded } = req.body;
+  await client.query(
+    `UPDATE tree SET label = $2, expanded = $3 WHERE id = $1;`,
+    [id, label, expanded]
+  );
+  res.sendStatus(200);
+});
+
+// DELETE /api/tree/:id
+// Deletes a node given an id (does not delete if there are children(?))
+app.delete("/api/tree/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await client.query(
+      "DELETE FROM tree WHERE id = $1 RETURNING *;",
+      [id]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Node not found" });
+    }
+
+    res.json({ message: "Node deleted successfully", node: result.rows[0] });
+  } catch (error) {
+    console.error("Error deleting node:", error);
+    res.status(500).json({ error: "Failed to delete node" });
+  }
 });
 
 app.listen(4000, () => {
