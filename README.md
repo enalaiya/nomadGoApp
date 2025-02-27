@@ -1,5 +1,5 @@
 ## To Run:
-Run `make run` in terminal to build docker container and populate database, view site at [localhost:3000](http//localhost:3000)
+Run `make run` in terminal to build docker container and populate database, view site at localhost:3000
 
 ## To use
 Mouse over items in list to add children, delete, and edit. Press enter to save edits.
