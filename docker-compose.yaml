@@ -15,7 +15,7 @@ services:
   postgres:
     container_name: container-pg
     image: postgres
-    hostname: localhost
+    hostname: host.docker.internal
     ports:
       - "5432:5432"
     environment:

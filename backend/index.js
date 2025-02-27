@@ -8,10 +8,10 @@ app.use(express.json());
 
 // PostgreSQL client
 const client = new Client({
-  user: "postgres",
-  host: "localhost",
-  database: "postgres",
-  password: "",
+  user: "admin",
+  host: "host.docker.internal",
+  database: "test_db",
+  password: "root",
   port: 5432,
 });
 
