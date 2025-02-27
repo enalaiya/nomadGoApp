@@ -6,7 +6,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// PostgreSQL client
+// PostgreSQL client -> host may need to be 'localhost'
 const client = new Client({
   user: "admin",
   host: "host.docker.internal",
